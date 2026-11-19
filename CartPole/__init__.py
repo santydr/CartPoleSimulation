@@ -82,6 +82,8 @@ class CartPole(EnvironmentBatched):
 
         self.config = config["cartpole"]
         self.rng_CartPole = create_rng(self.__class__.__name__, self.config["seed"])
+        print("SEED:", self.config["seed"])
+        self.rng_Trace = create_rng(f"{self.__class__.__name__}_Trace", self.config["seed"])
 
         self.next_step_mode = self.config["next_step_mode"]
 
@@ -551,7 +553,7 @@ class CartPole(EnvironmentBatched):
                     s_for_controller[ANGLE_SIN_IDX] = np.sin(s_for_controller[ANGLE_IDX])
                 else:
                     s_for_controller = self.s_with_noise_and_latency
-
+                #start_time = timeit.default_timer()
                 self.Q_calculated = float(self.controller.step(
                     s_for_controller,
                     self.time,
@@ -674,7 +676,7 @@ class CartPole(EnvironmentBatched):
         self.random_track_f = Generate_Random_Trace_Function(
 
             length_of_experiment=self.length_of_experiment,
-            rtf_rng=self.rng_CartPole,
+            rtf_rng=self.rng_Trace,
 
             track_relative_complexity=self.track_relative_complexity,
             interpolation_type=self.interpolation_type,

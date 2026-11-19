@@ -167,5 +167,5 @@ class controller_do_mpc_discrete(template_controller):
         self.tvp_template['_tvp', :, 'target_position'] = self.variable_parameters.target_position
 
         Q = self.mpc.make_step(self.x0)
-
+        print("Q: ", Q.item())
         return Q.item()

@@ -2,6 +2,7 @@
 This is a linear-quadratic regulator
 It assumes that the input relation is u = Q*u_max (no fancy motor model) !
 """
+from sympy import true
 
 from SI_Toolkit.computation_library import NumpyLibrary, TensorType
 import numpy as np
@@ -64,7 +65,7 @@ class controller_lqr(template_controller):
         # Cost matrices for LQR controller
         self.Q = np.diag(self.config_controller["Q"]) # How much to punish x, v, theta, omega
         self.R = self.config_controller["R"]  # How much to punish Q
-
+        print('Q:',self.Q,' - R:',self.R)
         # first, try to solve the ricatti equation
         X = scipy.linalg.solve_continuous_are(A, B, self.Q, self.R)
 
@@ -79,8 +80,11 @@ class controller_lqr(template_controller):
         eigVals = np.linalg.eigvals(A - np.dot(B, K))
 
         self.K = K
+        print(' K:', self.K)
         self.X = X
         self.eigVals = eigVals
+
+        self.firstQ = 0.1
 
     def step(self, s: np.ndarray, time=None, updated_attributes: "dict[str, TensorType]" = {}):
         self.update_attributes(updated_attributes)
@@ -90,6 +94,11 @@ class controller_lqr(template_controller):
 
         Q = np.dot(-self.K, state).item()
 
+        #if s[POSITION_IDX] > 0.15:
+        #    self.firstQ = -0.5
+        #elif s[POSITION_IDX] < -0.15:
+        #    self.firstQ = 0.5
+        #Q=self.firstQ
         # Clip Q
         Q = np.clip(Q, -1.0, 1.0, dtype=np.float32)
         return Q

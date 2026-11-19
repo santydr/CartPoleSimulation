@@ -74,7 +74,8 @@ class controller_do_mpc(template_controller):
         self.model.setup()
 
         self.mpc = do_mpc.controller.MPC(self.model)
-
+        print("Claves disponibles:", list(self.config_controller.keys()))
+        print("Contenido completo:", self.config_controller)
         setup_mpc = {
             'n_horizon': self.config_controller["mpc_horizon"],
             't_step': self.config_controller["dt"],
