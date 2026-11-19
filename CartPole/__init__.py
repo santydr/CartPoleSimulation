@@ -98,6 +98,10 @@ class CartPole(EnvironmentBatched):
 
         self.slider = target_slider
 
+        # Optional external inputs (AIS 2026 revision). Inactive when None: see CartPole/external_inputs.py
+        self.disturbance = None  # callable t -> force on the cart [N], e.g. PulseTrain
+        self.sensor_model = None  # object with measure(s, t) -> measured state, e.g. RobotLikeSensor
+
         self.time_L_last_change = None
         self.start_changing_L = False
 
@@ -360,9 +364,16 @@ class CartPole(EnvironmentBatched):
         s_delayed = self.LatencyAdderInstance.get_interpolated_delayed_state()
         self.s_with_noise_and_latency = self.NoiseAdderInstance.add_noise_to_measurement(s_delayed, copy=False)
         self.s_with_noise_and_latency = self.update_vertical_angle_offset(self.s_with_noise_and_latency)
+        if self.sensor_model is not None:
+            self.s_with_noise_and_latency = self.sensor_model.measure(self.s_with_noise_and_latency, self.time)
         
     def cartpole_second_derivatives(self):
-        self.angleDD, self.positionDD = self.cpe.cartpole_second_derivatives(self.s, self.Q, L, m_pole, u_max)
+        if self.disturbance is None:
+            self.angleDD, self.positionDD = self.cpe.cartpole_second_derivatives(self.s, self.Q, L, m_pole, u_max)
+        else:
+            # External force on the cart, expressed as an equivalent (unclipped) motor command
+            Q_eff = self.Q + self.disturbance(self.time) / float(u_max)
+            self.angleDD, self.positionDD = self.cpe.cartpole_second_derivatives(self.s, Q_eff, L, m_pole, u_max)
 
     def cartpole_ode(self):
         self.angleDD, self.positionDD = self.cpe.cartpole_ode_interface(self.s, self.u, L=float(L), m_pole=float(m_pole))

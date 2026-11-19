@@ -89,6 +89,9 @@ class controller_secloc_lqr(template_controller):
         self.log_base = self.config_controller["log_base"]
         self.dead_ang = self.config_controller["dead_ang"]
         self.dead_pos = self.config_controller["dead_pos"]
+        # Order in which the SECLOC conditions are evaluated: 'angle_first' (default, as in the
+        # original experiments), 'position_first', or 'both' (both evaluated at every sampling instant).
+        self.check_order = self.config_controller.get("check_order", "angle_first")
         self.ang_last_shift = 0.0001
         self.pos_last_shift = 0.0001
         self.last_Q = 0
@@ -104,6 +107,34 @@ class controller_secloc_lqr(template_controller):
         self.count_instructions = 0
         self.sum_instructions = 0
 
+    def _check_angle(self, s):
+        """SECLOC condition for the angle error. Returns 1 if an event is triggered."""
+        ang_shift = s[ANGLE_IDX]
+        if ang_shift < 0:
+            ang_shift = -ang_shift
+        if (ang_shift > self.dead_ang) and (self.ang_last_shift != 0):  # ang_dead_band cant be 0.
+            ang_ratio_inc = ang_shift/self.ang_last_shift
+            ang_ratio_dec = 1.0/ang_ratio_inc
+            if (ang_ratio_inc >= self.log_base) or (ang_ratio_dec >= self.log_base):
+                self.ang_last_shift = ang_shift
+                self.ang_events = self.ang_events + 1
+                return 1
+        return 0
+
+    def _check_position(self, s):
+        """SECLOC condition for the position error. Returns 1 if an event is triggered."""
+        pos_shift = s[POSITION_IDX] - self.variable_parameters.target_position
+        if pos_shift < 0:
+            pos_shift = -pos_shift
+        if (pos_shift > self.dead_pos) and (self.pos_last_shift != 0):
+            pos_ratio_inc = pos_shift/self.pos_last_shift
+            pos_ratio_dec = 1.0/pos_ratio_inc
+            if (pos_ratio_inc >= self.log_base) or (pos_ratio_dec >= self.log_base):
+                self.pos_last_shift = pos_shift
+                self.pos_events = self.pos_events + 1
+                return 1
+        return 0
+
     def step(self, s: np.ndarray, time=None, updated_attributes: "dict[str, TensorType]" = {}):
 
         self.tick_last = self.tick_last + 1
@@ -117,33 +148,22 @@ class controller_secloc_lqr(template_controller):
         ti_inicio = cpu_time()
         # Start SECLOC checks.
         #with Collector() as collectorSECLOC:
+        spike = 0  # Defined before the refractory check so that ref_period > 1 works.
         if self.tick_last >= self.ref_period:
-            spike = 0
-            ang_shift = s[ANGLE_IDX]
-            ang_shift_sign = 1          # Only for polarity purposes
-            if ang_shift < 0:
-                ang_shift_sign = -1
-                ang_shift = -ang_shift
-            if (ang_shift > self.dead_ang) and (self.ang_last_shift != 0):		# ang_dead_band cant be 0.
-                ang_ratio_inc = ang_shift/self.ang_last_shift
-                ang_ratio_dec = 1.0/ang_ratio_inc
-                if (ang_ratio_inc >= self.log_base) or (ang_ratio_dec >= self.log_base):
-                    self.ang_last_shift = ang_shift
-                    spike = 1
-                    self.ang_events = self.ang_events + 1
-            if spike == 0:      # Change again to == 0 after measurements
-                pos_shift = s[POSITION_IDX] - self.variable_parameters.target_position
-                pos_shift_sign = 1
-                if pos_shift < 0:
-                    pos_shift_sign = -1
-                    pos_shift = -pos_shift
-                if (pos_shift > self.dead_pos) and (self.pos_last_shift != 0):
-                    pos_ratio_inc = pos_shift/self.pos_last_shift
-                    pos_ratio_dec = 1.0/pos_ratio_inc
-                    if (pos_ratio_inc >= self.log_base) or (pos_ratio_dec >= self.log_base):
-                        self.pos_last_shift = pos_shift
-                        spike = 1
-                        self.pos_events = self.pos_events + 1
+            if self.check_order == 'angle_first':
+                spike = self._check_angle(s)
+                if spike == 0:
+                    spike = self._check_position(s)
+            elif self.check_order == 'position_first':
+                spike = self._check_position(s)
+                if spike == 0:
+                    spike = self._check_angle(s)
+            elif self.check_order == 'both':
+                spike_ang = self._check_angle(s)
+                spike_pos = self._check_position(s)
+                spike = 1 if (spike_ang or spike_pos) else 0
+            else:
+                raise ValueError(f"Unknown check_order: {self.check_order}")
             if spike==1:
                 self.tick_last = 0
                 self.tick_control = self.tick_control + 1
